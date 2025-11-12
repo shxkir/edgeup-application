@@ -1,5 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:edgeup_upsc_app/core/utils/app_theme.dart';
+import 'package:edgeup_upsc_app/core/utils/theme_manager.dart';
+import 'package:edgeup_upsc_app/core/utils/page_transitions.dart';
+import 'package:edgeup_upsc_app/features/auth/presentation/pages/signup_page.dart';
 import 'package:edgeup_upsc_app/features/dashboard/presentation/pages/dashboard_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -9,296 +15,422 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+    _animationController.forward();
+  }
 
   @override
   void dispose() {
+    _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      // UI TESTING MODE - Check sample credentials
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
-      // Sample credentials for testing
-      if (email == 'admin@example.com' && password == 'admin@1234') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ Login successful! (UI Testing Mode)'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        // Navigate to dashboard after a short delay
-        Future.delayed(const Duration(milliseconds: 500), () {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => const DashboardPage(),
+      // Check admin account
+      bool isValid = email == 'admin@example.com' && password == 'admin@1234';
+
+      // Check registered users
+      if (!isValid) {
+        final prefs = await SharedPreferences.getInstance();
+        final usersJson = prefs.getString('users') ?? '[]';
+        final List<dynamic> users = jsonDecode(usersJson);
+
+        for (var user in users) {
+          if (user['email'] == email && user['password'] == password) {
+            isValid = true;
+            // Store current user info
+            await prefs.setString('currentUserEmail', email);
+            await prefs.setString('currentUserFirstName', user['firstName']);
+            await prefs.setString('currentUserLastName', user['lastName']);
+            break;
+          }
+        }
+      } else {
+        // Store admin user info
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('currentUserEmail', email);
+        await prefs.setString('currentUserFirstName', 'Admin');
+        await prefs.setString('currentUserLastName', 'User');
+      }
+
+      if (mounted) {
+        if (isValid) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Login successful!'),
+              backgroundColor: AppTheme.primaryViolet,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           );
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✗ Invalid credentials. Use: admin@example.com / admin@1234'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                ScalePageRoute(page: const DashboardPage()),
+              );
+            }
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Invalid email or password. Please try again.'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
       }
     }
   }
 
-  void _handleGoogleLogin() {
-    // UI TESTING MODE - Just show a snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Google login pressed - Firebase disabled for UI testing'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    const isLoading = false; // For UI testing
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeManager = Provider.of<ThemeManager>(context);
 
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo/Header
-                  Container(
-                    height: 100,
-                    width: 100,
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.primaryGradient,
-                      borderRadius: BorderRadius.circular(20),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark ? AppTheme.darkGradient : AppTheme.subtleGradient,
+        ),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              // Floating orbs in background
+              Positioned(
+                top: -100,
+                right: -100,
+                child: Container(
+                  width: 300,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.primaryViolet.withAlpha(30),
+                        Colors.transparent,
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.school,
-                      size: 60,
-                      color: Colors.white,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: -150,
+                left: -100,
+                child: Container(
+                  width: 400,
+                  height: 400,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.electricBlue.withAlpha(25),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 32),
+                ),
+              ),
 
-                  // Title
-                  Text(
-                    'Welcome to EdgeUp',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'UPSC Preparation Portal',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Demo credentials hint
-                  Container(
+              // Theme toggle button
+              Positioned(
+                top: 16,
+                right: 16,
+                child: GestureDetector(
+                  onTap: () => themeManager.toggleTheme(),
+                  child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
+                      color: isDark
+                          ? Colors.white.withAlpha(25)
+                          : Colors.white.withAlpha(200),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withAlpha(25)
+                            : AppTheme.lightBorder,
+                      ),
+                      boxShadow: [AppTheme.softShadow],
                     ),
+                    child: Icon(
+                      isDark ? Icons.light_mode : Icons.dark_mode,
+                      color: isDark ? AppTheme.primaryViolet : AppTheme.lightTextPrimary,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Main content
+              Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(32.0),
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // Logo with gradient
+                        Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.premiumGradient,
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryViolet.withAlpha(76),
+                                blurRadius: 32,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.school_rounded,
+                            size: 52,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+
+                        // Welcome text - BOLD AND CRISP
+                        Text(
+                          'Welcome to EdgeUp',
+                          style: TextStyle(
+                            fontSize: 42,
+                            fontWeight: FontWeight.w900,
+                            color: isDark
+                                ? AppTheme.darkTextPrimary
+                                : AppTheme.lightTextPrimary,
+                            letterSpacing: -1.5,
+                            height: 1.2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Your premium UPSC preparation platform',
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                color: isDark
+                                    ? AppTheme.darkTextSecondary
+                                    : AppTheme.lightTextSecondary,
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 48),
+
+                        // Glass card (without backdrop blur to keep text crisp)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? AppTheme.darkCard.withAlpha(230)
+                                : Colors.white.withAlpha(240),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withAlpha(25)
+                                  : AppTheme.lightBorder,
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isDark
+                                    ? Colors.black.withAlpha(50)
+                                    : AppTheme.primaryViolet.withAlpha(15),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.all(32),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Email field
+                                  TextFormField(
+                                    controller: _emailController,
+                                    keyboardType: TextInputType.emailAddress,
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? AppTheme.darkTextPrimary
+                                          : AppTheme.lightTextPrimary,
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: 'Email',
+                                      hintText: 'Enter your email',
+                                      prefixIcon: Icon(
+                                        Icons.email_outlined,
+                                        color: AppTheme.primaryViolet,
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter your email';
+                                      }
+                                      if (!value.contains('@')) {
+                                        return 'Please enter a valid email';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 20),
+
+                                  // Password field
+                                  TextFormField(
+                                    controller: _passwordController,
+                                    obscureText: _obscurePassword,
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? AppTheme.darkTextPrimary
+                                          : AppTheme.lightTextPrimary,
+                                    ),
+                                    decoration: InputDecoration(
+                                      labelText: 'Password',
+                                      hintText: 'Enter your password',
+                                      prefixIcon: Icon(
+                                        Icons.lock_outline,
+                                        color: AppTheme.primaryViolet,
+                                      ),
+                                      suffixIcon: IconButton(
+                                        icon: Icon(
+                                          _obscurePassword
+                                              ? Icons.visibility_outlined
+                                              : Icons.visibility_off_outlined,
+                                          color: isDark
+                                              ? AppTheme.darkTextSecondary
+                                              : AppTheme.lightTextSecondary,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _obscurePassword = !_obscurePassword;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter your password';
+                                      }
+                                      if (value.length < 6) {
+                                        return 'Password must be at least 6 characters';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 32),
+
+                                  // Login button
+                                  Container(
+                                    height: 56,
+                                    decoration: BoxDecoration(
+                                      gradient: AppTheme.premiumGradient,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppTheme.primaryViolet.withAlpha(76),
+                                          blurRadius: 24,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: _handleLogin,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Login',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 24),
+
+                        // Sign up link
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                            const SizedBox(width: 8),
                             Text(
-                              'Demo Credentials',
+                              'Don\'t have an account? ',
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue.shade700,
-                                fontSize: 12,
+                                color: isDark
+                                    ? AppTheme.darkTextSecondary
+                                    : AppTheme.lightTextSecondary,
+                                fontSize: 14,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                SlidePageRoute(page: const SignUpPage()),
+                              ),
+                              child: Text(
+                                'Sign Up',
+                                style: TextStyle(
+                                  color: AppTheme.primaryViolet,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 24),
+
+                        // Footer
                         Text(
-                          'Email: admin@example.com\nPassword: admin@1234',
+                          'Designed with premium aesthetics',
                           style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blue.shade900,
-                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: isDark
+                                ? AppTheme.darkTextSecondary.withAlpha(128)
+                                : AppTheme.lightTextSecondary.withAlpha(128),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-
-                  // Email Field
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    enabled: !isLoading,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'Enter your email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Please enter a valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Password Field
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    enabled: !isLoading,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      hintText: 'Enter your password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your password';
-                      }
-                      if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Login Button
-                  Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.primaryGradient,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [AppTheme.cardShadow],
-                    ),
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : _handleLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            )
-                          : const Text(
-                              'Login',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Divider
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          'OR',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Google Sign In Button
-                  OutlinedButton.icon(
-                    onPressed: isLoading ? null : _handleGoogleLogin,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      side: const BorderSide(
-                        color: Color(0xFFE5E7EB),
-                        width: 1,
-                      ),
-                    ),
-                    icon: Image.network(
-                      'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
-                      height: 24,
-                      width: 24,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.login,
-                        size: 24,
-                      ),
-                    ),
-                    label: const Text(
-                      'Continue with Google',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),

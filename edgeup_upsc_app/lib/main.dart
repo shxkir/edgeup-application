@@ -1,7 +1,9 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
 import 'package:edgeup_upsc_app/core/utils/app_theme.dart';
+import 'package:edgeup_upsc_app/core/utils/theme_manager.dart';
 import 'package:edgeup_upsc_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:edgeup_upsc_app/features/auth/presentation/bloc/auth_event.dart';
 import 'package:edgeup_upsc_app/features/auth/presentation/bloc/auth_state.dart';
@@ -21,7 +23,12 @@ void main() async {
   // Initialize dependency injection - DISABLED FOR UI TESTING
   // await di.init();
 
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeManager(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -29,12 +36,18 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'EdgeUp UPSC',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      // Direct to LoginPage for UI testing (no auth)
-      home: const LoginPage(),
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        return MaterialApp(
+          title: 'EdgeUp UPSC',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeManager.themeMode,
+          // Direct to LoginPage for UI testing (no auth)
+          home: const LoginPage(),
+        );
+      },
     );
   }
 }
