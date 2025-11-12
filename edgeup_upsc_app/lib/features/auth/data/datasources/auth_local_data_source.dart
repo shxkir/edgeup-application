@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:edgeup_upsc_app/core/constants/app_constants.dart';
 import 'package:edgeup_upsc_app/features/auth/data/models/user_model.dart';

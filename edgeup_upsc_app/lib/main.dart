@@ -13,13 +13,13 @@ import 'package:edgeup_upsc_app/injection_container.dart' as di;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase - DISABLED FOR UI TESTING
+  // await Firebase.initializeApp(
+  //   options: DefaultFirebaseOptions.currentPlatform,
+  // );
 
-  // Initialize dependency injection
-  await di.init();
+  // Initialize dependency injection - DISABLED FOR UI TESTING
+  // await di.init();
 
   runApp(const MyApp());
 }
@@ -29,14 +29,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => di.sl<AuthBloc>()..add(const CheckAuthStatusRequested()),
-      child: MaterialApp(
-        title: 'EdgeUp UPSC',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: const AuthWrapper(),
-      ),
+    return MaterialApp(
+      title: 'EdgeUp UPSC',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      // Direct to LoginPage for UI testing (no auth)
+      home: const LoginPage(),
     );
   }
 }

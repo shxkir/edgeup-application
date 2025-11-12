@@ -1,5 +1,8 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:edgeup_upsc_app/core/usecases/usecase.dart';
+import 'package:edgeup_upsc_app/features/dashboard/domain/entities/announcement_entity.dart';
+import 'package:edgeup_upsc_app/features/dashboard/domain/entities/class_entity.dart';
+import 'package:edgeup_upsc_app/features/dashboard/domain/entities/quiz_entity.dart';
 import 'package:edgeup_upsc_app/features/dashboard/domain/usecases/get_announcements.dart';
 import 'package:edgeup_upsc_app/features/dashboard/domain/usecases/get_next_class.dart';
 import 'package:edgeup_upsc_app/features/dashboard/domain/usecases/get_upcoming_quizzes.dart';
@@ -68,19 +71,19 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       }
 
       // Extract the data
-      final nextClass = nextClassResult.fold(
+      final ClassEntity? nextClass = nextClassResult.fold(
         (l) => null,
-        (r) => r,
+        (r) => r as ClassEntity?,
       );
 
-      final quizzes = quizzesResult.fold(
-        (l) => <dynamic>[],
-        (r) => r,
+      final List<QuizEntity> quizzes = quizzesResult.fold(
+        (l) => <QuizEntity>[],
+        (r) => r as List<QuizEntity>,
       );
 
-      final announcements = announcementsResult.fold(
-        (l) => <dynamic>[],
-        (r) => r,
+      final List<AnnouncementEntity> announcements = announcementsResult.fold(
+        (l) => <AnnouncementEntity>[],
+        (r) => r as List<AnnouncementEntity>,
       );
 
       // Check if all data is empty
