@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "250725613501",
+    "project_id": "edgeup-upsc-app",
+    "storage_bucket": "edgeup-upsc-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250725613501:android:e3a66f5d838a25813d5cd4",
+        "android_client_info": {
+          "package_name": "com.edgeup.edgeupUpscApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4WxGILV1NnY1go29gKYBwyKRgqJ8H-ls"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250725613501:android:86992b670984195d3d5cd4",
+        "android_client_info": {
+          "package_name": "com.edgeup.edgeup_upsc_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4WxGILV1NnY1go29gKYBwyKRgqJ8H-ls"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

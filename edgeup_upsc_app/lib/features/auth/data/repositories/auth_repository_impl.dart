@@ -15,6 +15,25 @@ class AuthRepositoryImpl implements AuthRepository {
   });
 
   @override
+  Future<Either<Failure, UserEntity>> registerWithEmail({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    try {
+      final user = await remoteDataSource.registerWithEmail(
+        email: email,
+        password: password,
+        name: name,
+      );
+      await localDataSource.cacheUser(user);
+      return Right(user);
+    } catch (e) {
+      return Left(AuthFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, UserEntity>> loginWithEmail({
     required String email,
     required String password,
@@ -70,6 +89,36 @@ class AuthRepositoryImpl implements AuthRepository {
         await localDataSource.clearCache();
       }
       return Right(user);
+    } catch (e) {
+      return Left(AuthFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> sendEmailVerification() async {
+    try {
+      await remoteDataSource.sendEmailVerification();
+      return const Right(null);
+    } catch (e) {
+      return Left(AuthFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> sendPasswordResetEmail(String email) async {
+    try {
+      await remoteDataSource.sendPasswordResetEmail(email);
+      return const Right(null);
+    } catch (e) {
+      return Left(AuthFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, bool>> isEmailVerified() async {
+    try {
+      final isVerified = await remoteDataSource.isEmailVerified();
+      return Right(isVerified);
     } catch (e) {
       return Left(AuthFailure(e.toString()));
     }

@@ -35,37 +35,38 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR_WEB_API_KEY',
-    appId: '1:YOUR_APP_ID:web:YOUR_WEB_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'your-project-id',
-    authDomain: 'your-project-id.firebaseapp.com',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyDxYtRKyYoGksEe4lqe_1QkNZwpdufqDmw',
+    appId: '1:250725613501:web:2b651eee8a10b6f63d5cd4',
+    messagingSenderId: '250725613501',
+    projectId: 'edgeup-upsc-app',
+    authDomain: 'edgeup-upsc-app.firebaseapp.com',
+    storageBucket: 'edgeup-upsc-app.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'YOUR_ANDROID_API_KEY',
-    appId: '1:YOUR_APP_ID:android:YOUR_ANDROID_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyA4WxGILV1NnY1go29gKYBwyKRgqJ8H-ls',
+    appId: '1:250725613501:android:86992b670984195d3d5cd4',
+    messagingSenderId: '250725613501',
+    projectId: 'edgeup-upsc-app',
+    storageBucket: 'edgeup-upsc-app.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'YOUR_IOS_API_KEY',
-    appId: '1:YOUR_APP_ID:ios:YOUR_IOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyCI4SnvBfzV-1iiv3XRcpS2ee39mS2lVP8',
+    appId: '1:250725613501:ios:335bf451852eb8e03d5cd4',
+    messagingSenderId: '250725613501',
+    projectId: 'edgeup-upsc-app',
+    storageBucket: 'edgeup-upsc-app.firebasestorage.app',
     iosBundleId: 'com.edgeup.edgeupUpscApp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'YOUR_MACOS_API_KEY',
-    appId: '1:YOUR_APP_ID:macos:YOUR_MACOS_APP_ID',
-    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyCI4SnvBfzV-1iiv3XRcpS2ee39mS2lVP8',
+    appId: '1:250725613501:ios:335bf451852eb8e03d5cd4',
+    messagingSenderId: '250725613501',
+    projectId: 'edgeup-upsc-app',
+    storageBucket: 'edgeup-upsc-app.firebasestorage.app',
     iosBundleId: 'com.edgeup.edgeupUpscApp',
   );
+
 }

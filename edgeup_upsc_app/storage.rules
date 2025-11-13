@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ==================== HELPER FUNCTIONS ====================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidImageType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isValidPdfType() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function isUnder10MB() {
+      return request.resource.size < 10 * 1024 * 1024;
+    }
+
+    function isUnder50MB() {
+      return request.resource.size < 50 * 1024 * 1024;
+    }
+
+    // ==================== USER PROFILE PHOTOS ====================
+
+    match /users/{userId}/profile_photo.jpg {
+      // Anyone can read profile photos
+      allow read: if true;
+
+      // Users can upload/update their own profile photo
+      allow write: if isOwner(userId) &&
+                     isValidImageType() &&
+                     isUnder10MB();
+
+      // Users can delete their own profile photo
+      allow delete: if isOwner(userId);
+    }
+
+    // ==================== USER STUDY MATERIALS ====================
+
+    match /study_materials/{userId}/{fileName} {
+      // Users can read their own materials
+      allow read: if isOwner(userId);
+
+      // Users can upload study materials (PDF, images)
+      allow write: if isOwner(userId) &&
+                     (isValidPdfType() || isValidImageType()) &&
+                     isUnder50MB();
+
+      // Users can delete their own materials
+      allow delete: if isOwner(userId);
+    }
+
+    // ==================== SHARED MATERIALS ====================
+
+    match /shared/{fileName} {
+      // Anyone authenticated can read shared materials
+      allow read: if isAuthenticated();
+
+      // Only authenticated users can upload
+      allow write: if isAuthenticated() &&
+                     (isValidPdfType() || isValidImageType()) &&
+                     isUnder50MB();
+    }
+
+    // ==================== PUBLIC COURSE MATERIALS ====================
+
+    match /courses/{courseId}/{fileName} {
+      // Anyone can read course materials
+      allow read: if true;
+
+      // Only admins can upload course materials (handle via Cloud Functions)
+      allow write: if false;
+    }
+
+    // ==================== TEMPORARY UPLOADS ====================
+
+    match /temp/{userId}/{fileName} {
+      // Users can manage their temp files
+      allow read, write, delete: if isOwner(userId) &&
+                                   isUnder10MB();
+    }
+
+    // ==================== DEFAULT DENY ====================
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

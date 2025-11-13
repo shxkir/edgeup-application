@@ -4,6 +4,12 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:edgeup_upsc_app/features/auth/data/models/user_model.dart';
 
 abstract class AuthRemoteDataSource {
+  Future<UserModel> registerWithEmail({
+    required String email,
+    required String password,
+    required String name,
+  });
+
   Future<UserModel> loginWithEmail({
     required String email,
     required String password,
@@ -14,6 +20,12 @@ abstract class AuthRemoteDataSource {
   Future<void> logout();
 
   Future<UserModel?> getCurrentUser();
+
+  Future<void> sendEmailVerification();
+
+  Future<void> sendPasswordResetEmail(String email);
+
+  Future<bool> isEmailVerified();
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -26,6 +38,51 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     required this.firestore,
     required this.googleSignIn,
   });
+
+  @override
+  Future<UserModel> registerWithEmail({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    try {
+      // Create user account
+      final userCredential = await firebaseAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      final user = userCredential.user;
+      if (user == null) {
+        throw Exception('User is null after registration');
+      }
+
+      // Update display name first
+      await user.updateDisplayName(name);
+
+      // Create user document in Firestore
+      final newUser = UserModel.fromFirebaseUser(
+        user.uid,
+        email,
+        name,
+        null,
+      );
+
+      await firestore.collection('users').doc(user.uid).set(newUser.toFirestore());
+
+      // Send email verification (don't wait for it to complete)
+      user.sendEmailVerification().catchError((error) {
+        // Log error but don't fail registration
+        print('Email verification sending failed: $error');
+      });
+
+      return newUser;
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception('Failed to register: ${e.toString()}');
+    }
+  }
 
   @override
   Future<UserModel> loginWithEmail({
@@ -41,6 +98,11 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final user = userCredential.user;
       if (user == null) {
         throw Exception('User is null after login');
+      }
+
+      // Check if email is verified
+      if (!user.emailVerified) {
+        throw Exception('Please verify your email before logging in. Check your inbox for the verification link.');
       }
 
       // Get user data from Firestore
@@ -149,6 +211,51 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       return null;
     } catch (e) {
       throw Exception('Failed to get current user: ${e.toString()}');
+    }
+  }
+
+  @override
+  Future<void> sendEmailVerification() async {
+    try {
+      final user = firebaseAuth.currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      if (user.emailVerified) {
+        throw Exception('Email is already verified');
+      }
+
+      await user.sendEmailVerification();
+    } catch (e) {
+      throw Exception('Failed to send verification email: ${e.toString()}');
+    }
+  }
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await firebaseAuth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_getAuthErrorMessage(e.code));
+    } catch (e) {
+      throw Exception('Failed to send password reset email: ${e.toString()}');
+    }
+  }
+
+  @override
+  Future<bool> isEmailVerified() async {
+    try {
+      final user = firebaseAuth.currentUser;
+      if (user == null) return false;
+
+      // Reload user to get latest email verification status
+      await user.reload();
+      final refreshedUser = firebaseAuth.currentUser;
+
+      return refreshedUser?.emailVerified ?? false;
+    } catch (e) {
+      throw Exception('Failed to check email verification status: ${e.toString()}');
     }
   }
 

@@ -15,13 +15,13 @@ import 'package:edgeup_upsc_app/injection_container.dart' as di;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase - DISABLED FOR UI TESTING
-  // await Firebase.initializeApp(
-  //   options: DefaultFirebaseOptions.currentPlatform,
-  // );
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  // Initialize dependency injection - DISABLED FOR UI TESTING
-  // await di.init();
+  // Initialize dependency injection
+  await di.init();
 
   runApp(
     ChangeNotifierProvider(
@@ -44,8 +44,11 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: themeManager.themeMode,
-          // Direct to LoginPage for UI testing (no auth)
-          home: const LoginPage(),
+          // Use AuthWrapper to handle authentication state
+          home: BlocProvider(
+            create: (_) => di.sl<AuthBloc>()..add(CheckAuthStatusRequested()),
+            child: const AuthWrapper(),
+          ),
         );
       },
     );

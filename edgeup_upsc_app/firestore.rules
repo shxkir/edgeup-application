@@ -1,0 +1,174 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================== HELPER FUNCTIONS ====================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if document belongs to current user
+    function isDocOwner() {
+      return isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Check if email is verified
+    function isEmailVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
+    // ==================== USER PROFILES ====================
+
+    match /users/{userId} {
+      // Anyone can read public user profiles
+      allow read: if true;
+
+      // Users can create their own profile
+      allow create: if isOwner(userId) &&
+                      hasRequiredFields(['email', 'displayName', 'createdAt']);
+
+      // Users can update only their own profile
+      allow update: if isOwner(userId) &&
+                      // Cannot change email or createdAt
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email', 'createdAt']);
+
+      // Users can delete only their own profile, or admins can delete any
+      allow delete: if isOwner(userId) || isAdmin();
+
+      // Subcollections for user data
+      match /private/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // ==================== NOTES ====================
+
+    match /notes/{noteId} {
+      // Users can read their own notes
+      allow read: if isDocOwner();
+
+      // Users can create notes with required fields
+      allow create: if isAuthenticated() &&
+                      request.resource.data.userId == request.auth.uid &&
+                      hasRequiredFields(['userId', 'title', 'content', 'createdAt']);
+
+      // Users can update only their own notes
+      allow update: if isDocOwner() &&
+                      // Cannot change userId or createdAt
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'createdAt']);
+
+      // Users can delete only their own notes
+      allow delete: if isDocOwner();
+    }
+
+    // ==================== STUDY SESSIONS ====================
+
+    match /study_sessions/{sessionId} {
+      // Users can read their own sessions
+      allow read: if isDocOwner() || isAdmin();
+
+      // Users can create sessions
+      allow create: if isAuthenticated() &&
+                      request.resource.data.userId == request.auth.uid &&
+                      hasRequiredFields(['userId', 'subject', 'durationMinutes', 'createdAt']);
+
+      // Users can update only their own sessions
+      allow update: if isDocOwner();
+
+      // Users can delete only their own sessions
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    // ==================== PUBLIC COLLECTIONS ====================
+
+    match /announcements/{announcementId} {
+      // Anyone can read announcements
+      allow read: if true;
+
+      // Only admins can manage announcements
+      allow write: if isAdmin();
+    }
+
+    match /courses/{courseId} {
+      // Anyone can read courses
+      allow read: if true;
+
+      // Only admins can manage courses
+      allow write: if isAdmin();
+
+      // Course materials
+      match /materials/{materialId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // ==================== LEADERBOARD ====================
+
+    match /leaderboard/{entryId} {
+      // Anyone can read leaderboard
+      allow read: if true;
+
+      // Only system can write (use Cloud Functions)
+      allow write: if false;
+    }
+
+    // ==================== COMMENTS ====================
+
+    match /comments/{commentId} {
+      // Anyone authenticated can read comments
+      allow read: if isAuthenticated();
+
+      // Authenticated users can create comments
+      allow create: if isAuthenticated() &&
+                      request.resource.data.userId == request.auth.uid &&
+                      hasRequiredFields(['userId', 'content', 'createdAt']);
+
+      // Users can update/delete only their own comments
+      allow update, delete: if isDocOwner();
+    }
+
+    // ==================== REPORTS ====================
+
+    match /reports/{reportId} {
+      // Users can read their own reports
+      allow read: if isDocOwner() || isAdmin();
+
+      // Authenticated users can create reports
+      allow create: if isAuthenticated() &&
+                      request.resource.data.userId == request.auth.uid;
+
+      // Only admins can update reports
+      allow update: if isAdmin();
+
+      // Users cannot delete reports
+      allow delete: if isAdmin();
+    }
+
+    // ==================== DEFAULT DENY ====================
+
+    // Deny access to all other collections by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

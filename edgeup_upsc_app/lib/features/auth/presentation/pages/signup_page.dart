@@ -1,11 +1,11 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:edgeup_upsc_app/core/utils/app_theme.dart';
 import 'package:edgeup_upsc_app/core/utils/theme_manager.dart';
 import 'package:edgeup_upsc_app/core/utils/page_transitions.dart';
 import 'package:edgeup_upsc_app/features/auth/presentation/pages/login_page.dart';
+import 'package:edgeup_upsc_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:edgeup_upsc_app/injection_container.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -65,44 +65,84 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
 
   Future<void> _handleSignUp() async {
     if (_formKey.currentState!.validate()) {
-      // Save user data to local storage
-      final prefs = await SharedPreferences.getInstance();
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
 
-      // Get existing users
-      final usersJson = prefs.getString('users') ?? '[]';
-      final List<dynamic> users = jsonDecode(usersJson);
+      try {
+        final authRepository = sl<AuthRepository>();
+        final fullName = '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}';
 
-      // Add new user
-      users.add({
-        'firstName': _firstNameController.text.trim(),
-        'lastName': _lastNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'password': _passwordController.text.trim(),
-      });
-
-      // Save updated users list
-      await prefs.setString('users', jsonEncode(users));
-
-      if (mounted) {
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Account created successfully! Please login.'),
-            backgroundColor: AppTheme.primaryViolet,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            duration: const Duration(seconds: 2),
-          ),
+        // Register user with Firebase
+        final result = await authRepository.registerWithEmail(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+          name: fullName,
         );
 
-        // Navigate to login after short delay
-        Future.delayed(const Duration(milliseconds: 1500), () {
-          if (mounted) {
-            Navigator.of(context).pushReplacement(
-              FadePageRoute(page: const LoginPage()),
-            );
-          }
-        });
+        // Dismiss loading
+        if (mounted) Navigator.pop(context);
+
+        result.fold(
+          (failure) {
+            // Show error message
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(failure.message),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          },
+          (user) {
+            // Show success message with email verification info
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Account created! Please check your email to verify your account before logging in.'),
+                  backgroundColor: AppTheme.primaryViolet,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+
+              // Navigate to login after delay
+              Future.delayed(const Duration(milliseconds: 2000), () {
+                if (mounted) {
+                  Navigator.of(context).pushReplacement(
+                    FadePageRoute(page: const LoginPage()),
+                  );
+                }
+              });
+            }
+          },
+        );
+      } catch (e) {
+        // Dismiss loading
+        if (mounted) Navigator.pop(context);
+
+        // Show error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Registration failed: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     }
   }
