@@ -71,10 +71,32 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       await firestore.collection('users').doc(user.uid).set(newUser.toFirestore());
 
       // Send email verification (don't wait for it to complete)
-      user.sendEmailVerification().catchError((error) {
+      user.sendEmailVerification().then((_) {
+        // Log successful email verification send
+        _logEmailEvent(
+          email: email,
+          eventType: 'registration_verification_sent',
+          status: 'success',
+          reason: 'Verification email sent to new user',
+        );
+      }).catchError((error) {
         // Log error but don't fail registration
+        _logEmailEvent(
+          email: email,
+          eventType: 'registration_verification_failed',
+          status: 'failed',
+          reason: 'Failed to send verification email: $error',
+        );
         print('Email verification sending failed: $error');
       });
+
+      // Log successful registration
+      await _logEmailEvent(
+        email: email,
+        eventType: 'registration_success',
+        status: 'success',
+        reason: 'User account created successfully',
+      );
 
       return newUser;
     } on FirebaseAuthException catch (e) {
@@ -256,6 +278,28 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       return refreshedUser?.emailVerified ?? false;
     } catch (e) {
       throw Exception('Failed to check email verification status: ${e.toString()}');
+    }
+  }
+
+  Future<void> _logEmailEvent({
+    required String email,
+    required String eventType,
+    required String status,
+    required String reason,
+  }) async {
+    try {
+      await firestore.collection('email_history').add({
+        'email': email,
+        'eventType': eventType,
+        'status': status,
+        'reason': reason,
+        'timestamp': FieldValue.serverTimestamp(),
+        'ipAddress': 'N/A', // You can add IP tracking if needed
+        'deviceInfo': 'Flutter App',
+      });
+    } catch (e) {
+      // Silently fail - don't block user actions if logging fails
+      print('Failed to log email event: $e');
     }
   }
 

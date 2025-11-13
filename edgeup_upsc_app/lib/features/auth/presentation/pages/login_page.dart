@@ -1,12 +1,15 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:edgeup_upsc_app/core/utils/app_theme.dart';
 import 'package:edgeup_upsc_app/core/utils/theme_manager.dart';
 import 'package:edgeup_upsc_app/core/utils/page_transitions.dart';
 import 'package:edgeup_upsc_app/features/auth/presentation/pages/signup_page.dart';
 import 'package:edgeup_upsc_app/features/dashboard/presentation/pages/dashboard_page.dart';
+import 'package:edgeup_upsc_app/features/auth/presentation/widgets/verification_code_dialog.dart';
+import 'package:edgeup_upsc_app/features/auth/services/verification_code_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,8 +23,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  final _firebaseAuth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -46,38 +52,202 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
+
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
-      // Check admin account
-      bool isValid = email == 'admin@example.com' && password == 'admin@1234';
+      try {
+        // Attempt Firebase authentication
+        final userCredential = await _firebaseAuth.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
 
-      // Check registered users
-      if (!isValid) {
-        final prefs = await SharedPreferences.getInstance();
-        final usersJson = prefs.getString('users') ?? '[]';
-        final List<dynamic> users = jsonDecode(usersJson);
+        final user = userCredential.user;
+        if (user == null) {
+          throw Exception('Login failed. Please try again.');
+        }
 
-        for (var user in users) {
-          if (user['email'] == email && user['password'] == password) {
-            isValid = true;
-            // Store current user info
-            await prefs.setString('currentUserEmail', email);
-            await prefs.setString('currentUserFirstName', user['firstName']);
-            await prefs.setString('currentUserLastName', user['lastName']);
-            break;
+        // Check if email is verified (initial verification check)
+        if (!user.emailVerified) {
+          // Log this authentication attempt to Firestore
+          await _logEmailEvent(
+            email: email,
+            eventType: 'login_attempt_unverified',
+            status: 'failed',
+            reason: 'Email not verified',
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Please verify your email before logging in. Check your inbox for the verification link.'),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                duration: const Duration(seconds: 5),
+                action: SnackBarAction(
+                  label: 'Resend',
+                  textColor: Colors.white,
+                  onPressed: () async {
+                    await user.sendEmailVerification();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Verification email sent!'),
+                          backgroundColor: AppTheme.primaryViolet,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+            );
+          }
+
+          // Sign out the user since email is not verified
+          await _firebaseAuth.signOut();
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        // Generate and send 2FA verification code
+        final codeService = VerificationCodeService(_firestore);
+        final verificationCode = await codeService.storeVerificationCode(
+          email: email,
+          userId: user.uid,
+        );
+
+        // Email will be sent automatically by Firebase Cloud Function
+        // (Triggered when verification_codes document is created)
+
+        // Show notification
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Verification code sent to $email\n\nPlease check your email inbox.'),
+              backgroundColor: AppTheme.primaryViolet,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+
+        // Show verification code dialog
+        setState(() => _isLoading = false);
+
+        if (!mounted) return;
+
+        final verified = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => VerificationCodeDialog(
+            email: email,
+            onVerify: (enteredCode) async {
+              final isValid = await codeService.verifyCode(
+                userId: user.uid,
+                enteredCode: enteredCode,
+              );
+
+              if (isValid) {
+                // Log successful 2FA verification
+                await _logEmailEvent(
+                  email: email,
+                  eventType: '2fa_verification_success',
+                  status: 'success',
+                  reason: '2FA code verified successfully',
+                );
+
+                if (context.mounted) {
+                  Navigator.of(context).pop(true);
+                }
+              } else {
+                // Log failed 2FA verification
+                await _logEmailEvent(
+                  email: email,
+                  eventType: '2fa_verification_failed',
+                  status: 'failed',
+                  reason: 'Invalid or expired verification code',
+                );
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Invalid or expired code. Please try again.'),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  );
+                }
+              }
+            },
+            onResend: () async {
+              // Generate new code (Cloud Function will send email automatically)
+              await codeService.storeVerificationCode(
+                email: email,
+                userId: user.uid,
+              );
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('New verification code sent! Check your email.'),
+                    backgroundColor: AppTheme.primaryViolet,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+            },
+          ),
+        );
+
+        // If verification was cancelled or failed
+        if (verified != true) {
+          await _firebaseAuth.signOut();
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+          return;
+        }
+
+        // Get user data from Firestore
+        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        String firstName = 'User';
+        String lastName = '';
+
+        if (userDoc.exists) {
+          final data = userDoc.data();
+          final name = data?['name'] as String? ?? 'User';
+          final nameParts = name.split(' ');
+          firstName = nameParts.first;
+          if (nameParts.length > 1) {
+            lastName = nameParts.sublist(1).join(' ');
           }
         }
-      } else {
-        // Store admin user info
+
+        // Cache user data locally
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('currentUserEmail', email);
-        await prefs.setString('currentUserFirstName', 'Admin');
-        await prefs.setString('currentUserLastName', 'User');
-      }
+        await prefs.setString('currentUserFirstName', firstName);
+        await prefs.setString('currentUserLastName', lastName);
+        await prefs.setString('currentUserId', user.uid);
 
-      if (mounted) {
-        if (isValid) {
+        // Log successful login to Firestore
+        await _logEmailEvent(
+          email: email,
+          eventType: 'login_success',
+          status: 'success',
+          reason: 'User logged in successfully',
+        );
+
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('Login successful!'),
@@ -86,6 +256,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           );
+
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
               Navigator.of(context).pushReplacement(
@@ -93,17 +264,150 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               );
             }
           });
-        } else {
+        }
+      } on FirebaseAuthException catch (e) {
+        // Log failed login attempt
+        await _logEmailEvent(
+          email: email,
+          eventType: 'login_attempt_failed',
+          status: 'failed',
+          reason: _getAuthErrorMessage(e.code),
+        );
+
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Invalid email or password. Please try again.'),
+              content: Text(_getAuthErrorMessage(e.code)),
               backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           );
         }
+      } catch (e) {
+        // Log generic error
+        await _logEmailEvent(
+          email: email,
+          eventType: 'login_error',
+          status: 'error',
+          reason: e.toString(),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Login failed: ${e.toString()}'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
+    }
+  }
+
+  Future<void> _handleForgotPassword() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter a valid email address first'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _firebaseAuth.sendPasswordResetEmail(email: email);
+
+      // Log password reset request
+      await _logEmailEvent(
+        email: email,
+        eventType: 'password_reset_requested',
+        status: 'success',
+        reason: 'Password reset email sent',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Password reset link sent to your email!'),
+            backgroundColor: AppTheme.primaryViolet,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      // Log failed password reset
+      await _logEmailEvent(
+        email: email,
+        eventType: 'password_reset_failed',
+        status: 'failed',
+        reason: _getAuthErrorMessage(e.code),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_getAuthErrorMessage(e.code)),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _logEmailEvent({
+    required String email,
+    required String eventType,
+    required String status,
+    required String reason,
+  }) async {
+    try {
+      await _firestore.collection('email_history').add({
+        'email': email,
+        'eventType': eventType,
+        'status': status,
+        'reason': reason,
+        'timestamp': FieldValue.serverTimestamp(),
+        'ipAddress': 'N/A', // You can add IP tracking if needed
+        'deviceInfo': 'Flutter App',
+      });
+    } catch (e) {
+      // Silently fail - don't block user actions if logging fails
+      print('Failed to log email event: $e');
+    }
+  }
+
+  String _getAuthErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found with this email.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'The email address is not valid.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      case 'invalid-credential':
+        return 'Invalid email or password.';
+      default:
+        return 'Authentication failed. Please try again.';
     }
   }
 
@@ -343,6 +647,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       return null;
                                     },
                                   ),
+                                  const SizedBox(height: 16),
+
+                                  // Forgot Password link
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: GestureDetector(
+                                      onTap: _handleForgotPassword,
+                                      child: Text(
+                                        'Forgot Password?',
+                                        style: TextStyle(
+                                          color: AppTheme.primaryViolet,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                   const SizedBox(height: 32),
 
                                   // Login button
@@ -360,7 +681,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       ],
                                     ),
                                     child: ElevatedButton(
-                                      onPressed: _handleLogin,
+                                      onPressed: _isLoading ? null : _handleLogin,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.transparent,
                                         shadowColor: Colors.transparent,
@@ -368,14 +689,23 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                           borderRadius: BorderRadius.circular(16),
                                         ),
                                       ),
-                                      child: const Text(
-                                        'Login',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
+                                      child: _isLoading
+                                          ? const SizedBox(
+                                              height: 24,
+                                              width: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 3,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              ),
+                                            )
+                                          : const Text(
+                                              'Login',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.5,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                 ],
